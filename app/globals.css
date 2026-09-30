@@ -5001,3 +5001,174 @@ select:focus-visible {
     height: 18px !important;
   }
 }
+
+
+
+
+
+
+
+/* =========================================================
+   FINAL MOBILE / TABLET FIX
+   HIDE LEFT SIDEBAR COMPLETELY
+   KEEP BOTTOM NAVIGATION
+   ========================================================= */
+
+@media (max-width: 900px) {
+
+  /* REMOVE LEFT SIDEBAR COMPLETELY */
+  .sidebar {
+    display: none !important;
+
+    position: static !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+
+    height: 0 !important;
+    min-height: 0 !important;
+    max-height: 0 !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    border: 0 !important;
+    box-shadow: none !important;
+
+    overflow: hidden !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+
+    transform: none !important;
+  }
+
+
+  /* MAIN CONTENT USE FULL SCREEN */
+  .main {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+
+    overflow-x: hidden !important;
+  }
+
+
+  /* CONTENT FULL WIDTH */
+  .content {
+    width: 100% !important;
+    max-width: 100% !important;
+
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+
+    padding-bottom: 105px !important;
+  }
+
+
+  /* PAGE FULL WIDTH */
+  .app-page {
+    width: 100% !important;
+    max-width: 100% !important;
+
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+
+    padding-bottom: 105px !important;
+  }
+
+
+  /* KEEP THE EXISTING BOTTOM NAV */
+  .mobile-bottom {
+    display: grid !important;
+
+    position: fixed !important;
+
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 10px !important;
+
+    width: auto !important;
+    max-width: none !important;
+
+    z-index: 999999 !important;
+  }
+}
+
+
+/* =========================================================
+   PHONE
+   ========================================================= */
+
+@media (max-width: 600px) {
+
+  .sidebar {
+    display: none !important;
+  }
+
+  .main {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
+
+  .content,
+  .app-page {
+    width: 100% !important;
+    max-width: 100% !important;
+
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+
+    padding-bottom: 100px !important;
+  }
+
+  .mobile-bottom {
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 8px !important;
+  }
+}
+
+
+/* =========================================================
+   SMALL PHONE
+   ========================================================= */
+
+@media (max-width: 390px) {
+
+  .sidebar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  .main {
+    width: 100vw !important;
+    margin-left: 0 !important;
+  }
+
+  .content,
+  .app-page {
+    width: 100vw !important;
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    padding-bottom: 96px !important;
+  }
+
+  .mobile-bottom {
+    left: 6px !important;
+    right: 6px !important;
+    bottom: 6px !important;
+  }
+}

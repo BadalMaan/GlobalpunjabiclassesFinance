@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createClient } from "../lib/supabase";
+import { createClient } from "../lib/supabase/client";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },

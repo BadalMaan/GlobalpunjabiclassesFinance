@@ -5,7 +5,6 @@ import {
   ArrowUpRight,
   ChevronLeft,
   ChevronRight,
-  CircleDollarSign,
   Receipt,
   Wallet,
 } from "lucide-react";
@@ -41,34 +40,75 @@ const monthLabel = (date: Date) =>
     year: "numeric",
   });
 
-export default function Dashboard() {
-  const client = createClient();
+const getGreeting = () => {
+  const hour = new Date().getHours();
 
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  if (hour < 21) return "Good evening";
+
+  return "Good night";
+};
+
+export default function Dashboard() {
   const [month, setMonth] = useState(
-    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    () =>
+      new Date(
+        new Date().getFullYear(),
+        new Date().getMonth(),
+        1
+      )
   );
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [name, setName] = useState("there");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    if (!client) {
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
 
     async function loadDashboard() {
       setLoading(true);
+      setLoadError("");
+
+      /*
+       * IMPORTANT:
+       * createClient() is intentionally called INSIDE the effect.
+       * This guarantees that the local `supabase` variable is
+       * narrowed after the null check and fixes:
+       *
+       * "client is possibly null"
+       */
+
+      const supabase = createClient();
+
+      if (!supabase) {
+        if (!cancelled) {
+          setLoading(false);
+          setLoadError(
+            "Supabase is not configured. Please check the Render environment variables."
+          );
+        }
+
+        return;
+      }
 
       const year = month.getFullYear();
       const monthIndex = month.getMonth();
 
-      const startDate = new Date(year, monthIndex, 1);
-      const endDate = new Date(year, monthIndex + 1, 1);
+      const startDate = new Date(
+        year,
+        monthIndex,
+        1
+      );
+
+      const endDate = new Date(
+        year,
+        monthIndex + 1,
+        1
+      );
 
       const startISO = startDate.toISOString();
       const endISO = endDate.toISOString();
@@ -76,96 +116,205 @@ export default function Dashboard() {
       const startDay = startISO.slice(0, 10);
       const endDay = endISO.slice(0, 10);
 
-      const [
-        incomeResult,
-        expenseResult,
-        profileResult,
-        userResult,
-      ] = await Promise.all([
-        client
-          .from("income_entries")
-          .select(
-            "id,description,amount,entry_date,created_at,created_by"
+      try {
+        const [
+          incomeResult,
+          expenseResult,
+          profileResult,
+          userResult,
+        ] = await Promise.all([
+          supabase
+            .from("income_entries")
+            .select(
+              "id,description,amount,entry_date,created_at,created_by"
+            )
+            .gte("entry_date", startISO)
+            .lt("entry_date", endISO)
+            .order("entry_date", {
+              ascending: false,
+            }),
+
+          supabase
+            .from("expense_entries")
+            .select(
+              "id,description,amount,expense_date,created_at,created_by"
+            )
+            .gte("expense_date", startDay)
+            .lt("expense_date", endDay)
+            .order("expense_date", {
+              ascending: false,
+            }),
+
+          supabase
+            .from("profiles")
+            .select(
+              "id,name,share_percentage"
+            )
+            .order("name", {
+              ascending: true,
+            }),
+
+          supabase.auth.getUser(),
+        ]);
+
+        if (cancelled) return;
+
+        if (incomeResult.error) {
+          throw new Error(
+            incomeResult.error.message
+          );
+        }
+
+        if (expenseResult.error) {
+          throw new Error(
+            expenseResult.error.message
+          );
+        }
+
+        if (profileResult.error) {
+          throw new Error(
+            profileResult.error.message
+          );
+        }
+
+        if (userResult.error) {
+          throw new Error(
+            userResult.error.message
+          );
+        }
+
+        const profiles =
+          profileResult.data || [];
+
+        const currentUserId =
+          userResult.data.user?.id;
+
+        const currentProfile =
+          currentUserId
+            ? profiles.find(
+                (profile: {
+                  id: string;
+                  name: string;
+                }) =>
+                  profile.id ===
+                  currentUserId
+              )
+            : null;
+
+        setName(
+          currentProfile?.name || "there"
+        );
+
+        setMembers(
+          profiles as Member[]
+        );
+
+        const nameMap = new Map<
+          string,
+          string
+        >(
+          profiles.map(
+            (profile: {
+              id: string;
+              name: string;
+            }) => [
+              profile.id,
+              profile.name,
+            ]
           )
-          .gte("entry_date", startISO)
-          .lt("entry_date", endISO)
-          .order("entry_date", { ascending: false }),
+        );
 
-        client
-          .from("expense_entries")
-          .select(
-            "id,description,amount,expense_date,created_at,created_by"
-          )
-          .gte("expense_date", startDay)
-          .lt("expense_date", endDay)
-          .order("expense_date", { ascending: false }),
+        const incomeEntries: Entry[] = (
+          incomeResult.data || []
+        ).map(
+          (entry: {
+            id: string;
+            description: string;
+            amount: number | string;
+            entry_date: string;
+            created_at: string;
+            created_by: string;
+          }) => ({
+            id: entry.id,
+            description:
+              entry.description,
+            amount: Number(
+              entry.amount
+            ),
+            entry_date:
+              entry.entry_date,
+            created_at:
+              entry.created_at,
+            created_by:
+              nameMap.get(
+                entry.created_by
+              ) || "Unknown",
+            type: "income",
+          })
+        );
 
-        client
-          .from("profiles")
-          .select("id,name,share_percentage")
-          .order("name", { ascending: true }),
+        const expenseEntries: Entry[] = (
+          expenseResult.data || []
+        ).map(
+          (entry: {
+            id: string;
+            description: string;
+            amount: number | string;
+            expense_date: string;
+            created_at: string;
+            created_by: string;
+          }) => ({
+            id: entry.id,
+            description:
+              entry.description,
+            amount: Number(
+              entry.amount
+            ),
+            entry_date:
+              entry.expense_date,
+            created_at:
+              entry.created_at,
+            created_by:
+              nameMap.get(
+                entry.created_by
+              ) || "Unknown",
+            type: "expense",
+          })
+        );
 
-        client.auth.getUser(),
-      ]);
+        const combined =
+          [
+            ...incomeEntries,
+            ...expenseEntries,
+          ].sort(
+            (a, b) =>
+              new Date(
+                b.entry_date
+              ).getTime() -
+              new Date(
+                a.entry_date
+              ).getTime()
+          );
 
-      if (cancelled) return;
+        setEntries(combined);
+        setLoading(false);
+      } catch (error) {
+        if (cancelled) return;
 
-      const profiles = profileResult.data || [];
+        console.error(
+          "Dashboard loading error:",
+          error
+        );
 
-      const currentUserId = userResult.data.user?.id;
+        setEntries([]);
+        setLoading(false);
 
-      const currentProfile = currentUserId
-        ? profiles.find((profile: any) => profile.id === currentUserId)
-        : null;
-
-      setName(currentProfile?.name || "there");
-
-      setMembers(profiles as Member[]);
-
-      const nameMap = new Map(
-        profiles.map((profile: any) => [
-          profile.id,
-          profile.name,
-        ])
-      );
-
-      const incomeEntries: Entry[] = (
-        incomeResult.data || []
-      ).map((entry: any) => ({
-        id: entry.id,
-        description: entry.description,
-        amount: Number(entry.amount),
-        entry_date: entry.entry_date,
-        created_at: entry.created_at,
-        created_by:
-          nameMap.get(entry.created_by) || "Unknown",
-        type: "income",
-      }));
-
-      const expenseEntries: Entry[] = (
-        expenseResult.data || []
-      ).map((entry: any) => ({
-        id: entry.id,
-        description: entry.description,
-        amount: Number(entry.amount),
-        entry_date: entry.expense_date,
-        created_at: entry.created_at,
-        created_by:
-          nameMap.get(entry.created_by) || "Unknown",
-        type: "expense",
-      }));
-
-      const combined = [
-        ...incomeEntries,
-        ...expenseEntries,
-      ].sort(
-        (a, b) =>
-          new Date(b.entry_date).getTime() -
-          new Date(a.entry_date).getTime()
-      );
-
-      setEntries(combined);
-      setLoading(false);
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load financial data."
+        );
+      }
     }
 
     loadDashboard();
@@ -175,12 +324,21 @@ export default function Dashboard() {
     };
   }, [month]);
 
+  /* =========================================================
+     CALCULATIONS
+     ========================================================= */
+
   const income = useMemo(
     () =>
       entries
-        .filter((entry) => entry.type === "income")
+        .filter(
+          (entry) =>
+            entry.type === "income"
+        )
         .reduce(
-          (total, entry) => total + Number(entry.amount),
+          (total, entry) =>
+            total +
+            Number(entry.amount),
           0
         ),
     [entries]
@@ -189,9 +347,14 @@ export default function Dashboard() {
   const expenses = useMemo(
     () =>
       entries
-        .filter((entry) => entry.type === "expense")
+        .filter(
+          (entry) =>
+            entry.type === "expense"
+        )
         .reduce(
-          (total, entry) => total + Number(entry.amount),
+          (total, entry) =>
+            total +
+            Number(entry.amount),
           0
         ),
     [entries]
@@ -199,25 +362,40 @@ export default function Dashboard() {
 
   const net = income - expenses;
 
-  const transactionCount = entries.length;
+  const transactionCount =
+    entries.length;
 
-  const recentEntries = entries.slice(0, 5);
+  const recentEntries =
+    entries.slice(0, 5);
 
-  function changeMonth(direction: number) {
+  /* =========================================================
+     MONTH NAVIGATION
+     ========================================================= */
+
+  function changeMonth(
+    direction: number
+  ) {
     setMonth(
       (current) =>
         new Date(
           current.getFullYear(),
-          current.getMonth() + direction,
+          current.getMonth() +
+            direction,
           1
         )
     );
   }
 
+  /* =========================================================
+     RENDER
+     ========================================================= */
+
   return (
     <div className="content dashboard-content">
 
-      {/* HEADER */}
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
 
       <div className="dashboard-heading">
 
@@ -228,15 +406,17 @@ export default function Dashboard() {
           </div>
 
           <h1 className="page-title">
-            Good evening, {name}
+            {getGreeting()},{" "}
+            {name}
             <span>👋</span>
           </h1>
 
           <p className="page-subtitle">
             {transactionCount === 0
-              ? "Your workspace is ready."
+              ? "Your financial workspace is ready."
               : `${transactionCount} ${
-                  transactionCount === 1
+                  transactionCount ===
+                  1
                     ? "transaction"
                     : "transactions"
                 } recorded this month.`}
@@ -248,10 +428,14 @@ export default function Dashboard() {
 
           <button
             type="button"
-            onClick={() => changeMonth(-1)}
+            onClick={() =>
+              changeMonth(-1)
+            }
             aria-label="Previous month"
           >
-            <ChevronLeft size={17} />
+            <ChevronLeft
+              size={17}
+            />
           </button>
 
           <div className="month-label">
@@ -260,10 +444,14 @@ export default function Dashboard() {
 
           <button
             type="button"
-            onClick={() => changeMonth(1)}
+            onClick={() =>
+              changeMonth(1)
+            }
             aria-label="Next month"
           >
-            <ChevronRight size={17} />
+            <ChevronRight
+              size={17}
+            />
           </button>
 
         </div>
@@ -271,7 +459,28 @@ export default function Dashboard() {
       </div>
 
 
-      {/* FINANCIAL SUMMARY */}
+      {/* =====================================================
+          ERROR
+      ===================================================== */}
+
+      {loadError && (
+        <div
+          className="notice"
+          style={{
+            marginTop: 18,
+            borderColor: "#f3caca",
+            background: "#fff8f8",
+            color: "#a92828",
+          }}
+        >
+          {loadError}
+        </div>
+      )}
+
+
+      {/* =====================================================
+          FINANCIAL SUMMARY
+      ===================================================== */}
 
       <section className="cards">
 
@@ -283,7 +492,11 @@ export default function Dashboard() {
               ? "No income recorded"
               : "Received this month"
           }
-          icon={<ArrowDownLeft size={17} />}
+          icon={
+            <ArrowDownLeft
+              size={17}
+            />
+          }
         />
 
         <Metric
@@ -294,7 +507,11 @@ export default function Dashboard() {
               ? "No expenses recorded"
               : "Recorded this month"
           }
-          icon={<ArrowUpRight size={17} />}
+          icon={
+            <ArrowUpRight
+              size={17}
+            />
+          }
           danger
         />
 
@@ -302,26 +519,35 @@ export default function Dashboard() {
           label="Net amount"
           value={money(net)}
           foot="Income minus expenses"
-          icon={<Wallet size={17} />}
+          icon={
+            <Wallet size={17} />
+          }
         />
 
         <Metric
           label="Transactions"
-          value={String(transactionCount)}
+          value={String(
+            transactionCount
+          )}
           foot={
             transactionCount === 0
               ? "Nothing recorded yet"
-              : transactionCount === 1
+              : transactionCount ===
+                1
               ? "1 transaction"
               : `${transactionCount} transactions`
           }
-          icon={<Receipt size={17} />}
+          icon={
+            <Receipt size={17} />
+          }
         />
 
       </section>
 
 
-      {/* OWNERSHIP + ACTIVITY */}
+      {/* =====================================================
+          OWNERSHIP + ACTIVITY
+      ===================================================== */}
 
       <div className="dashboard-grid">
 
@@ -337,60 +563,72 @@ export default function Dashboard() {
               </div>
 
               <div className="section-description">
-                Current ownership split
+                Fixed ownership split
               </div>
             </div>
 
           </div>
 
-          {members.length > 0 ? (
+          {members.length >
+          0 ? (
 
             <div className="ownership-grid">
 
-              {members.map((member) => {
+              {members.map(
+                (member) => {
 
-                const initials = member.name
-                  .split(" ")
-                  .map((part) => part[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase();
+                  const initials =
+                    member.name
+                      .split(" ")
+                      .map(
+                        (part) =>
+                          part[0]
+                      )
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase();
 
-                return (
-                  <div
-                    className="ownership-card"
-                    key={member.id}
-                  >
+                  return (
+                    <div
+                      className="ownership-card"
+                      key={member.id}
+                    >
 
-                    <div className="ownership-avatar">
-                      {initials}
-                    </div>
-
-                    <div className="ownership-info">
-
-                      <div className="ownership-name">
-                        {member.name}
+                      <div className="ownership-avatar">
+                        {initials}
                       </div>
 
-                      <div className="ownership-label">
-                        Ownership
+                      <div className="ownership-info">
+
+                        <div className="ownership-name">
+                          {member.name}
+                        </div>
+
+                        <div className="ownership-label">
+                          Ownership
+                        </div>
+
+                      </div>
+
+                      <div className="ownership-share">
+                        {
+                          member.share_percentage
+                        }
+                        %
                       </div>
 
                     </div>
-
-                    <div className="ownership-share">
-                      {member.share_percentage}%
-                    </div>
-
-                  </div>
-                );
-              })}
+                  );
+                }
+              )}
 
             </div>
 
           ) : (
 
-            <EmptySmall text="No members available yet." />
+            <EmptySmall
+              text="No members available yet."
+            />
 
           )}
 
@@ -419,67 +657,96 @@ export default function Dashboard() {
 
             <LoadingRows />
 
-          ) : recentEntries.length === 0 ? (
+          ) : recentEntries.length ===
+            0 ? (
 
             <EmptyState
               compact
               title="No activity yet"
-              text="Your latest income and expenses will appear here."
+              text="Income and expenses will appear here after you add your first transaction."
             />
 
           ) : (
 
             <div className="activity">
 
-              {recentEntries.map((entry) => (
-
-                <div
-                  className="activity-row"
-                  key={`${entry.type}-${entry.id}`}
-                >
+              {recentEntries.map(
+                (entry) => (
 
                   <div
-                    className={`activity-icon ${entry.type}`}
+                    className="activity-row"
+                    key={`${entry.type}-${entry.id}`}
                   >
-                    {entry.type === "income" ? (
-                      <ArrowDownLeft size={15} />
-                    ) : (
-                      <ArrowUpRight size={15} />
-                    )}
-                  </div>
 
-                  <div className="activity-main">
-
-                    <div className="activity-text">
-                      {entry.description}
+                    <div
+                      className={`activity-icon ${entry.type}`}
+                    >
+                      {entry.type ===
+                      "income" ? (
+                        <ArrowDownLeft
+                          size={15}
+                        />
+                      ) : (
+                        <ArrowUpRight
+                          size={15}
+                        />
+                      )}
                     </div>
 
-                    <div className="activity-time">
-                      {entry.type === "income"
-                        ? "Income"
-                        : "Expense"}{" "}
-                      ·{" "}
-                      {new Date(
-                        entry.entry_date
-                      ).toLocaleDateString("en-IN")}
-                      {" · "}
-                      {entry.created_by}
+                    <div className="activity-main">
+
+                      <div className="activity-text">
+                        {
+                          entry.description
+                        }
+                      </div>
+
+                      <div className="activity-time">
+
+                        {entry.type ===
+                        "income"
+                          ? "Income"
+                          : "Expense"}
+
+                        {" · "}
+
+                        {new Date(
+                          entry.entry_date
+                        ).toLocaleDateString(
+                          "en-IN"
+                        )}
+
+                        {" · "}
+
+                        {
+                          entry.created_by
+                        }
+
+                      </div>
+
                     </div>
+
+                    <strong
+                      className={
+                        entry.type
+                      }
+                    >
+                      {entry.type ===
+                      "income"
+                        ? "+"
+                        : "−"}
+
+                      {money(
+                        Number(
+                          entry.amount
+                        )
+                      )}
+                    </strong>
 
                   </div>
 
-                  <strong
-                    className={entry.type}
-                  >
-                    {entry.type === "income"
-                      ? "+"
-                      : "−"}
-                    {money(Number(entry.amount))}
-                  </strong>
-
-                </div>
-
-              ))}
+                )
+              )}
 
             </div>
 
@@ -490,7 +757,9 @@ export default function Dashboard() {
       </div>
 
 
-      {/* TRANSACTIONS */}
+      {/* =====================================================
+          TRANSACTIONS
+      ===================================================== */}
 
       <section className="card clean-card transactions-card">
 
@@ -514,16 +783,16 @@ export default function Dashboard() {
 
         </div>
 
-
         {loading ? (
 
           <LoadingRows />
 
-        ) : transactionCount === 0 ? (
+        ) : transactionCount ===
+          0 ? (
 
           <EmptyState
             title="No transactions yet"
-            text="Your transactions will appear here after you add income or expenses."
+            text="Your income and expenses will appear here after you add them."
           />
 
         ) : (
@@ -535,59 +804,91 @@ export default function Dashboard() {
               <thead>
 
                 <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th>Type</th>
-                  <th>Added by</th>
-                  <th>Amount</th>
+                  <th>
+                    Date
+                  </th>
+
+                  <th>
+                    Description
+                  </th>
+
+                  <th>
+                    Type
+                  </th>
+
+                  <th>
+                    Added by
+                  </th>
+
+                  <th>
+                    Amount
+                  </th>
                 </tr>
 
               </thead>
 
               <tbody>
 
-                {entries.map((entry) => (
+                {entries.map(
+                  (entry) => (
 
-                  <tr
-                    key={`${entry.type}-${entry.id}`}
-                  >
-
-                    <td>
-                      {new Date(
-                        entry.entry_date
-                      ).toLocaleDateString("en-IN")}
-                    </td>
-
-                    <td className="table-strong">
-                      {entry.description}
-                    </td>
-
-                    <td>
-
-                      <span
-                        className={`type-pill ${entry.type}`}
-                      >
-                        {entry.type}
-                      </span>
-
-                    </td>
-
-                    <td>
-                      {entry.created_by}
-                    </td>
-
-                    <td
-                      className={`amount ${entry.type}`}
+                    <tr
+                      key={`${entry.type}-${entry.id}`}
                     >
-                      {entry.type === "income"
-                        ? "+"
-                        : "−"}
-                      {money(Number(entry.amount))}
-                    </td>
 
-                  </tr>
+                      <td>
+                        {new Date(
+                          entry.entry_date
+                        ).toLocaleDateString(
+                          "en-IN"
+                        )}
+                      </td>
 
-                ))}
+                      <td className="table-strong">
+                        {
+                          entry.description
+                        }
+                      </td>
+
+                      <td>
+
+                        <span
+                          className={`type-pill ${entry.type}`}
+                        >
+                          {
+                            entry.type
+                          }
+                        </span>
+
+                      </td>
+
+                      <td>
+                        {
+                          entry.created_by
+                        }
+                      </td>
+
+                      <td
+                        className={`amount ${entry.type}`}
+                      >
+
+                        {entry.type ===
+                        "income"
+                          ? "+"
+                          : "−"}
+
+                        {money(
+                          Number(
+                            entry.amount
+                          )
+                        )}
+
+                      </td>
+
+                    </tr>
+
+                  )
+                )}
 
               </tbody>
 
@@ -604,9 +905,9 @@ export default function Dashboard() {
 }
 
 
-/* =========================
+/* =========================================================
    METRIC CARD
-========================= */
+   ========================================================= */
 
 function Metric({
   label,
@@ -653,9 +954,9 @@ function Metric({
 }
 
 
-/* =========================
+/* =========================================================
    EMPTY STATE
-========================= */
+   ========================================================= */
 
 function EmptyState({
   title,
@@ -669,7 +970,9 @@ function EmptyState({
   return (
     <div
       className={`empty-state ${
-        compact ? "compact" : ""
+        compact
+          ? "compact"
+          : ""
       }`}
     >
 
@@ -690,9 +993,9 @@ function EmptyState({
 }
 
 
-/* =========================
+/* =========================================================
    SMALL EMPTY STATE
-========================= */
+   ========================================================= */
 
 function EmptySmall({
   text,
@@ -707,9 +1010,9 @@ function EmptySmall({
 }
 
 
-/* =========================
+/* =========================================================
    LOADING SKELETON
-========================= */
+   ========================================================= */
 
 function LoadingRows() {
   return (

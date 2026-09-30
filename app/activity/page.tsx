@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import AppShell from "../../components/app-shell";
 import { createClient } from "../../lib/supabase/client";
 
 type AuditLog = {
@@ -145,132 +146,134 @@ export default function ActivityPage() {
   }
 
   return (
-    <div className="app-page">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">GLOBAL FINANCE</p>
+    <AppShell>
+      <div className="app-page">
+        <div className="page-header">
+          <div>
+            <p className="eyebrow">GLOBAL FINANCE</p>
 
-          <h1>Activity</h1>
+            <h1>Activity</h1>
 
-          <p className="page-description">
-            Complete history of financial and profile changes.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={loadActivity}
-          disabled={loading}
-        >
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="empty-state">
-          <h3>Loading activity...</h3>
-
-          <p>
-            Please wait while we load the audit history.
-          </p>
-        </div>
-      ) : error ? (
-        <div className="empty-state">
-          <h3>Unable to load activity</h3>
-
-          <p>{error}</p>
+            <p className="page-description">
+              Complete history of financial and profile changes.
+            </p>
+          </div>
 
           <button
             type="button"
-            className="primary-button"
+            className="secondary-button"
             onClick={loadActivity}
+            disabled={loading}
           >
-            Try Again
+            {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
-      ) : logs.length === 0 ? (
-        <div className="empty-state">
-          <h3>No activity yet</h3>
 
-          <p>
-            Changes made to income, expenses and profiles will
-            appear here automatically.
-          </p>
-        </div>
-      ) : (
-        <div className="activity-list">
-          {logs.map((log) => {
-            const userName = getUserName(log.user_id);
+        {loading ? (
+          <div className="empty-state">
+            <h3>Loading activity...</h3>
 
-            const hasOldData =
-              log.old_data !== null &&
-              log.old_data !== undefined;
+            <p>
+              Please wait while we load the audit history.
+            </p>
+          </div>
+        ) : error ? (
+          <div className="empty-state">
+            <h3>Unable to load activity</h3>
 
-            const hasNewData =
-              log.new_data !== null &&
-              log.new_data !== undefined;
+            <p>{error}</p>
 
-            return (
-              <div className="activity-card" key={log.id}>
-                <div className="activity-card-top">
-                  <div>
-                    <div className="activity-title-row">
-                      <span
-                        className={`activity-badge ${getActionClass(
-                          log.action
-                        )}`}
-                      >
-                        {formatAction(log.action)}
-                      </span>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={loadActivity}
+            >
+              Try Again
+            </button>
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="empty-state">
+            <h3>No activity yet</h3>
 
-                      {log.table_name && (
-                        <span className="activity-table">
-                          {log.table_name}
+            <p>
+              Changes made to income, expenses and profiles will
+              appear here automatically.
+            </p>
+          </div>
+        ) : (
+          <div className="activity-list">
+            {logs.map((log) => {
+              const userName = getUserName(log.user_id);
+
+              const hasOldData =
+                log.old_data !== null &&
+                log.old_data !== undefined;
+
+              const hasNewData =
+                log.new_data !== null &&
+                log.new_data !== undefined;
+
+              return (
+                <div className="activity-card" key={log.id}>
+                  <div className="activity-card-top">
+                    <div>
+                      <div className="activity-title-row">
+                        <span
+                          className={`activity-badge ${getActionClass(
+                            log.action
+                          )}`}
+                        >
+                          {formatAction(log.action)}
                         </span>
-                      )}
+
+                        {log.table_name && (
+                          <span className="activity-table">
+                            {log.table_name}
+                          </span>
+                        )}
+                      </div>
+
+                      <h3>{userName}</h3>
+
+                      <p className="activity-time">
+                        {formatDate(log.created_at)}
+                      </p>
                     </div>
-
-                    <h3>{userName}</h3>
-
-                    <p className="activity-time">
-                      {formatDate(log.created_at)}
-                    </p>
                   </div>
+
+                  {log.record_id && (
+                    <div className="activity-record">
+                      <span>Record ID</span>
+
+                      <strong>{log.record_id}</strong>
+                    </div>
+                  )}
+
+                  {hasOldData && (
+                    <div className="activity-data">
+                      <div className="activity-data-heading">
+                        <span>Previous Value</span>
+                      </div>
+
+                      <pre>{formatData(log.old_data)}</pre>
+                    </div>
+                  )}
+
+                  {hasNewData && (
+                    <div className="activity-data">
+                      <div className="activity-data-heading">
+                        <span>New Value</span>
+                      </div>
+
+                      <pre>{formatData(log.new_data)}</pre>
+                    </div>
+                  )}
                 </div>
-
-                {log.record_id && (
-                  <div className="activity-record">
-                    <span>Record ID</span>
-
-                    <strong>{log.record_id}</strong>
-                  </div>
-                )}
-
-                {hasOldData && (
-                  <div className="activity-data">
-                    <div className="activity-data-heading">
-                      <span>Previous Value</span>
-                    </div>
-
-                    <pre>{formatData(log.old_data)}</pre>
-                  </div>
-                )}
-
-                {hasNewData && (
-                  <div className="activity-data">
-                    <div className="activity-data-heading">
-                      <span>New Value</span>
-                    </div>
-
-                    <pre>{formatData(log.new_data)}</pre>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </AppShell>
   );
 }

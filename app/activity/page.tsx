@@ -128,8 +128,8 @@ export default function ActivityPage() {
     return "activity-neutral";
   }
 
-  function formatData(data: unknown) {
-    if (!data) {
+  function formatData(data: unknown): string {
+    if (data === null || data === undefined) {
       return "—";
     }
 
@@ -203,6 +203,14 @@ export default function ActivityPage() {
           {logs.map((log) => {
             const userName = getUserName(log.user_id);
 
+            const hasOldData =
+              log.old_data !== null &&
+              log.old_data !== undefined;
+
+            const hasNewData =
+              log.new_data !== null &&
+              log.new_data !== undefined;
+
             return (
               <div className="activity-card" key={log.id}>
                 <div className="activity-card-top">
@@ -239,7 +247,7 @@ export default function ActivityPage() {
                   </div>
                 )}
 
-                {log.old_data && (
+                {hasOldData && (
                   <div className="activity-data">
                     <div className="activity-data-heading">
                       <span>Previous Value</span>
@@ -249,7 +257,7 @@ export default function ActivityPage() {
                   </div>
                 )}
 
-                {log.new_data && (
+                {hasNewData && (
                   <div className="activity-data">
                     <div className="activity-data-heading">
                       <span>New Value</span>

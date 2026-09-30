@@ -21,8 +21,6 @@ type Profile = {
 };
 
 export default function ActivityPage() {
-  const supabase = createClient();
-
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +33,16 @@ export default function ActivityPage() {
   async function loadActivity() {
     setLoading(true);
     setError("");
+
+    const supabase = createClient();
+
+    if (!supabase) {
+      setError(
+        "Supabase is not configured. Please check the Supabase environment variables."
+      );
+      setLoading(false);
+      return;
+    }
 
     const [
       { data: auditData, error: auditError },
@@ -64,7 +72,6 @@ export default function ActivityPage() {
 
     setLogs((auditData || []) as AuditLog[]);
     setProfiles(profileData || []);
-
     setLoading(false);
   }
 
@@ -79,7 +86,9 @@ export default function ActivityPage() {
   }, [profiles]);
 
   function getUserName(userId: string | null) {
-    if (!userId) return "System";
+    if (!userId) {
+      return "System";
+    }
 
     return profileMap[userId]?.name || "Unknown User";
   }
@@ -92,7 +101,9 @@ export default function ActivityPage() {
   }
 
   function formatAction(action: string | null) {
-    if (!action) return "Activity";
+    if (!action) {
+      return "Activity";
+    }
 
     return action
       .replace(/_/g, " ")
@@ -102,15 +113,25 @@ export default function ActivityPage() {
   function getActionClass(action: string | null) {
     const value = (action || "").toLowerCase();
 
-    if (value.includes("delete")) return "activity-delete";
-    if (value.includes("update")) return "activity-update";
-    if (value.includes("insert")) return "activity-add";
+    if (value.includes("delete")) {
+      return "activity-delete";
+    }
+
+    if (value.includes("update")) {
+      return "activity-update";
+    }
+
+    if (value.includes("insert")) {
+      return "activity-add";
+    }
 
     return "activity-neutral";
   }
 
   function formatData(data: unknown) {
-    if (!data) return "—";
+    if (!data) {
+      return "—";
+    }
 
     try {
       if (typeof data === "string") {

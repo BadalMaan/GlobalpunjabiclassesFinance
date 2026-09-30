@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AppShell from "../../components/app-shell";
 import { createClient } from "../../lib/supabase/client";
 
 type Profile = {
@@ -16,7 +17,6 @@ export default function ProfilePage() {
 
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
-
   const [email, setEmail] = useState("");
 
   const [newPassword, setNewPassword] = useState("");
@@ -119,12 +119,28 @@ export default function ProfilePage() {
       return;
     }
 
+    const cleanName = name.trim();
+    const cleanEmail = email.trim();
+    const cleanMobile = mobile.trim();
+
+    if (!cleanName) {
+      setError("Please enter your full name.");
+      setSaving(false);
+      return;
+    }
+
+    if (!cleanEmail) {
+      setError("Please enter your email address.");
+      setSaving(false);
+      return;
+    }
+
     const { error: profileError } = await supabase
       .from("profiles")
       .update({
-        name: name.trim(),
-        email: email.trim(),
-        mobile: mobile.trim(),
+        name: cleanName,
+        email: cleanEmail,
+        mobile: cleanMobile,
       })
       .eq("id", user.id);
 
@@ -134,9 +150,9 @@ export default function ProfilePage() {
       return;
     }
 
-    if (email.trim() && email.trim() !== user.email) {
+    if (cleanEmail !== user.email) {
       const { error: emailError } = await supabase.auth.updateUser({
-        email: email.trim(),
+        email: cleanEmail,
       });
 
       if (emailError) {
@@ -156,9 +172,9 @@ export default function ProfilePage() {
       current
         ? {
             ...current,
-            name: name.trim(),
-            email: email.trim(),
-            mobile: mobile.trim(),
+            name: cleanName,
+            email: cleanEmail,
+            mobile: cleanMobile,
           }
         : current
     );
@@ -328,241 +344,254 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="app-page">
-        <div className="empty-state">
-          <h3>Loading profile...</h3>
-          <p>Please wait while we load your account.</p>
+      <AppShell>
+        <div className="app-page">
+          <div className="empty-state">
+            <h3>Loading profile...</h3>
+            <p>Please wait while we load your account.</p>
+          </div>
         </div>
-      </div>
+      </AppShell>
     );
   }
 
   return (
-    <div className="app-page">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">GLOBAL FINANCE</p>
+    <AppShell>
+      <div className="app-page">
+        <div className="page-header">
+          <div>
+            <p className="eyebrow">GLOBAL FINANCE</p>
 
-          <h1>My Profile</h1>
+            <h1>My Profile</h1>
 
-          <p className="page-description">
-            Your personal account information and security settings.
-          </p>
-        </div>
-      </div>
-
-      {error && (
-        <div className="profile-message profile-error">
-          {error}
-        </div>
-      )}
-
-      {message && (
-        <div className="profile-message profile-success">
-          {message}
-        </div>
-      )}
-
-      <div className="profile-layout">
-        <section className="profile-card">
-          <div className="profile-card-header">
-            <div>
-              <h2>Profile Picture</h2>
-
-              <p>
-                Upload a clear profile picture for your account.
-              </p>
-            </div>
+            <p className="page-description">
+              Your personal account information and security settings.
+            </p>
           </div>
+        </div>
 
-          <div className="profile-avatar-section">
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt="Profile"
-                className="profile-avatar-image"
-              />
-            ) : (
-              <div className="profile-avatar-placeholder">
-                {getInitials(name)}
+        {error && (
+          <div className="profile-message profile-error">
+            {error}
+          </div>
+        )}
+
+        {message && (
+          <div className="profile-message profile-success">
+            {message}
+          </div>
+        )}
+
+        <div className="profile-layout">
+          {/* PROFILE PICTURE */}
+          <section className="profile-card">
+            <div className="profile-card-header">
+              <div>
+                <h2>Profile Picture</h2>
+
+                <p>
+                  Upload a clear profile picture for your account.
+                </p>
               </div>
-            )}
+            </div>
 
-            <div className="profile-avatar-controls">
-              <label className="file-button">
-                Choose Image
+            <div className="profile-avatar-section">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Profile"
+                  className="profile-avatar-image"
+                />
+              ) : (
+                <div className="profile-avatar-placeholder">
+                  {getInitials(name)}
+                </div>
+              )}
+
+              <div className="profile-avatar-controls">
+                <label className="file-button">
+                  Choose Image
+
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) => {
+                      setAvatarFile(
+                        event.target.files?.[0] || null
+                      );
+                    }}
+                    hidden
+                  />
+                </label>
+
+                {avatarFile && (
+                  <span className="selected-file">
+                    {avatarFile.name}
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={uploadAvatar}
+                  disabled={!avatarFile || uploading}
+                >
+                  {uploading
+                    ? "Uploading..."
+                    : "Upload Picture"}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* PERSONAL INFORMATION */}
+          <section className="profile-card">
+            <div className="profile-card-header">
+              <div>
+                <h2>Personal Information</h2>
+
+                <p>
+                  Update the information connected to your account.
+                </p>
+              </div>
+            </div>
+
+            <div className="profile-form">
+              <label>
+                Full Name
 
                 <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) => {
-                    setAvatarFile(
-                      event.target.files?.[0] || null
-                    );
-                  }}
-                  hidden
+                  value={name}
+                  onChange={(event) =>
+                    setName(event.target.value)
+                  }
+                  placeholder="Enter your full name"
                 />
               </label>
 
-              {avatarFile && (
-                <span className="selected-file">
-                  {avatarFile.name}
-                </span>
-              )}
+              <label>
+                Email Address
+
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) =>
+                    setEmail(event.target.value)
+                  }
+                  placeholder="Enter your email"
+                />
+              </label>
+
+              <label>
+                Mobile Number
+
+                <input
+                  type="tel"
+                  value={mobile}
+                  onChange={(event) =>
+                    setMobile(event.target.value)
+                  }
+                  placeholder="+91..."
+                />
+              </label>
 
               <button
                 type="button"
                 className="primary-button"
-                onClick={uploadAvatar}
-                disabled={!avatarFile || uploading}
+                onClick={saveProfile}
+                disabled={saving}
               >
-                {uploading ? "Uploading..." : "Upload Picture"}
+                {saving ? "Saving..." : "Save Profile"}
               </button>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <section className="profile-card">
-          <div className="profile-card-header">
-            <div>
-              <h2>Personal Information</h2>
+          {/* SECURITY */}
+          <section className="profile-card">
+            <div className="profile-card-header">
+              <div>
+                <h2>Security</h2>
 
-              <p>
-                Update the information connected to your account.
-              </p>
-            </div>
-          </div>
-
-          <div className="profile-form">
-            <label>
-              Full Name
-
-              <input
-                value={name}
-                onChange={(event) =>
-                  setName(event.target.value)
-                }
-                placeholder="Enter your full name"
-              />
-            </label>
-
-            <label>
-              Email Address
-
-              <input
-                type="email"
-                value={email}
-                onChange={(event) =>
-                  setEmail(event.target.value)
-                }
-                placeholder="Enter your email"
-              />
-            </label>
-
-            <label>
-              Mobile Number
-
-              <input
-                type="tel"
-                value={mobile}
-                onChange={(event) =>
-                  setMobile(event.target.value)
-                }
-                placeholder="+91..."
-              />
-            </label>
-
-            <button
-              type="button"
-              className="primary-button"
-              onClick={saveProfile}
-              disabled={saving}
-            >
-              {saving ? "Saving..." : "Save Profile"}
-            </button>
-          </div>
-        </section>
-
-        <section className="profile-card">
-          <div className="profile-card-header">
-            <div>
-              <h2>Security</h2>
-
-              <p>
-                Change your password to keep your account secure.
-              </p>
-            </div>
-          </div>
-
-          <div className="profile-form">
-            <label>
-              New Password
-
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(event) =>
-                  setNewPassword(event.target.value)
-                }
-                placeholder="Minimum 8 characters"
-              />
-            </label>
-
-            <label>
-              Confirm New Password
-
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={(event) =>
-                  setConfirmPassword(event.target.value)
-                }
-                placeholder="Enter password again"
-              />
-            </label>
-
-            <button
-              type="button"
-              className="primary-button"
-              onClick={changePassword}
-              disabled={changingPassword}
-            >
-              {changingPassword
-                ? "Changing Password..."
-                : "Change Password"}
-            </button>
-          </div>
-        </section>
-
-        <section className="profile-card">
-          <div className="profile-card-header">
-            <div>
-              <h2>Account Activity</h2>
-
-              <p>
-                Information about your latest authenticated session.
-              </p>
-            </div>
-          </div>
-
-          <div className="account-activity">
-            <div>
-              <span>Account Name</span>
-              <strong>{name || "Not available"}</strong>
+                <p>
+                  Change your password to keep your account secure.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <span>Account Email</span>
-              <strong>{email || "Not available"}</strong>
+            <div className="profile-form">
+              <label>
+                New Password
+
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) =>
+                    setNewPassword(event.target.value)
+                  }
+                  placeholder="Minimum 8 characters"
+                />
+              </label>
+
+              <label>
+                Confirm New Password
+
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) =>
+                    setConfirmPassword(event.target.value)
+                  }
+                  placeholder="Enter password again"
+                />
+              </label>
+
+              <button
+                type="button"
+                className="primary-button"
+                onClick={changePassword}
+                disabled={changingPassword}
+              >
+                {changingPassword
+                  ? "Changing Password..."
+                  : "Change Password"}
+              </button>
+            </div>
+          </section>
+
+          {/* ACCOUNT ACTIVITY */}
+          <section className="profile-card">
+            <div className="profile-card-header">
+              <div>
+                <h2>Account Activity</h2>
+
+                <p>
+                  Information about your latest authenticated
+                  session.
+                </p>
+              </div>
             </div>
 
-            <div>
-              <span>Last Login</span>
-              <strong>{formatLastLogin(lastLogin)}</strong>
+            <div className="account-activity">
+              <div>
+                <span>Account Name</span>
+                <strong>{name || "Not available"}</strong>
+              </div>
+
+              <div>
+                <span>Account Email</span>
+                <strong>{email || "Not available"}</strong>
+              </div>
+
+              <div>
+                <span>Last Login</span>
+                <strong>
+                  {formatLastLogin(lastLogin)}
+                </strong>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
 }

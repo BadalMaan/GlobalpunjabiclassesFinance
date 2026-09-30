@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import AppShell from "../../components/app-shell";
 import { createClient } from "../../lib/supabase/client";
 
 type Member = {
@@ -59,103 +60,105 @@ export default function MembersPage() {
   }
 
   return (
-    <div className="app-page">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">GLOBAL FINANCE</p>
+    <AppShell>
+      <div className="app-page">
+        <div className="page-header">
+          <div>
+            <p className="eyebrow">GLOBAL FINANCE</p>
 
-          <h1>Members</h1>
+            <h1>Members</h1>
 
-          <p className="page-description">
-            Three secure profiles with fixed ownership shares.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={loadMembers}
-          disabled={loading}
-        >
-          {loading ? "Loading..." : "Refresh"}
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="empty-state">
-          <h3>Loading members...</h3>
-
-          <p>
-            Please wait while we load the member profiles.
-          </p>
-        </div>
-      ) : error ? (
-        <div className="empty-state">
-          <h3>Unable to load members</h3>
-
-          <p>{error}</p>
+            <p className="page-description">
+              Three secure profiles with fixed ownership shares.
+            </p>
+          </div>
 
           <button
             type="button"
-            className="primary-button"
+            className="secondary-button"
             onClick={loadMembers}
+            disabled={loading}
           >
-            Try Again
+            {loading ? "Loading..." : "Refresh"}
           </button>
         </div>
-      ) : members.length === 0 ? (
-        <div className="empty-state">
-          <h3>No members found</h3>
 
-          <p>
-            No member profiles are currently available.
-          </p>
-        </div>
-      ) : (
-        <div className="members-grid">
-          {members.map((member) => (
-            <div className="member-card" key={member.id}>
-              <div className="member-card-top">
-                <div className="member-avatar">
-                  {getInitials(member.name)}
+        {loading ? (
+          <div className="empty-state">
+            <h3>Loading members...</h3>
+
+            <p>
+              Please wait while we load the member profiles.
+            </p>
+          </div>
+        ) : error ? (
+          <div className="empty-state">
+            <h3>Unable to load members</h3>
+
+            <p>{error}</p>
+
+            <button
+              type="button"
+              className="primary-button"
+              onClick={loadMembers}
+            >
+              Try Again
+            </button>
+          </div>
+        ) : members.length === 0 ? (
+          <div className="empty-state">
+            <h3>No members found</h3>
+
+            <p>
+              No member profiles are currently available.
+            </p>
+          </div>
+        ) : (
+          <div className="members-grid">
+            {members.map((member) => (
+              <div className="member-card" key={member.id}>
+                <div className="member-card-top">
+                  <div className="member-avatar">
+                    {getInitials(member.name)}
+                  </div>
+
+                  <div className="member-info">
+                    <h3>{member.name}</h3>
+
+                    <p>{member.email}</p>
+                  </div>
+
+                  <div className="member-share">
+                    <strong>
+                      {Number(member.share_percentage || 0)}%
+                    </strong>
+
+                    <span>Ownership</span>
+                  </div>
                 </div>
 
-                <div className="member-info">
-                  <h3>{member.name}</h3>
+                <div className="member-divider" />
 
-                  <p>{member.email}</p>
-                </div>
+                <div className="member-details">
+                  <div>
+                    <span>Ownership Share</span>
 
-                <div className="member-share">
-                  <strong>
-                    {Number(member.share_percentage || 0)}%
-                  </strong>
+                    <strong>
+                      {Number(member.share_percentage || 0)}%
+                    </strong>
+                  </div>
 
-                  <span>Ownership</span>
+                  <div>
+                    <span>Account</span>
+
+                    <strong>Active</strong>
+                  </div>
                 </div>
               </div>
-
-              <div className="member-divider" />
-
-              <div className="member-details">
-                <div>
-                  <span>Ownership Share</span>
-
-                  <strong>
-                    {Number(member.share_percentage || 0)}%
-                  </strong>
-                </div>
-
-                <div>
-                  <span>Account</span>
-
-                  <strong>Active</strong>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </AppShell>
   );
 }

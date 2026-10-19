@@ -190,7 +190,7 @@ export default function ExpensesPage() {
       amount: String(row.amount),
       date: localDate,
       time: localTime,
-      paid_from: row.paid_from || "Unassigned",
+      paid_from: (row.paid_from || "Unassigned") as FormState["paid_from"],
     });
     setError("");
     setModalOpen(true);

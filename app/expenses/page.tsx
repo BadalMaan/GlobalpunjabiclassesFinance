@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import SimplePage from "../../components/simple-page";
 import { createClient } from "../../lib/supabase/client";
@@ -10,7 +10,18 @@ import {
   X,
   CalendarDays,
   Clock3,
+  Wallet,
+  Landmark,
 } from "lucide-react";
+
+const PAYMENT_DESTINATIONS = [
+  { value: "Ranjot Singh", label: "Ranjot Singh's Bank" },
+  { value: "Badal Maan", label: "Badal Maan's Bank" },
+  { value: "Jasnoor", label: "Jasnoor's Bank" },
+  { value: "Cash", label: "Cash" },
+] as const;
+
+type PaymentDestination = (typeof PAYMENT_DESTINATIONS)[number]["value"];
 
 type ExpenseEntry = {
   id: string;
@@ -19,6 +30,7 @@ type ExpenseEntry = {
   expense_date: string;
   created_at: string;
   created_by: string;
+  paid_from: string;
 };
 
 type Profile = {
@@ -32,15 +44,15 @@ type FormState = {
   amount: string;
   date: string;
   time: string;
+  paid_from: PaymentDestination | "Unassigned";
 };
 
 function getCurrentDateTime(): FormState {
   const now = new Date();
-
-  const date = `${now.getFullYear()}-${String(
-    now.getMonth() + 1
-  ).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(now.getDate()).padStart(2, "0")}`;
   const time = `${String(now.getHours()).padStart(2, "0")}:${String(
     now.getMinutes()
   ).padStart(2, "0")}`;
@@ -50,6 +62,7 @@ function getCurrentDateTime(): FormState {
     amount: "",
     date,
     time,
+    paid_from: "Ranjot Singh",
   };
 }
 
@@ -77,20 +90,25 @@ function money(value: number) {
   }).format(value);
 }
 
+function destinationLabel(value: string) {
+  if (value === "Cash") return "Cash";
+  if (value === "Unassigned" || !value) return "Unassigned";
+  return `${value}'s Bank`;
+}
+
+function destinationIcon(value: string) {
+  return value === "Cash" ? <Wallet size={15} /> : <Landmark size={15} />;
+}
+
 export default function ExpensesPage() {
   const [rows, setRows] = useState<ExpenseEntry[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  const [form, setForm] = useState<FormState>(
-    getCurrentDateTime()
-  );
+  const [form, setForm] = useState<FormState>(getCurrentDateTime());
 
   async function loadExpenses() {
     const supabase = createClient();
@@ -108,13 +126,10 @@ export default function ExpensesPage() {
       supabase
         .from("expense_entries")
         .select(
-          "id,description,amount,expense_date,created_at,created_by"
+          "id,description,amount,expense_date,created_at,created_by,paid_from"
         )
         .order("expense_date", { ascending: false }),
-
-      supabase
-        .from("profiles")
-        .select("id,name,share_percentage"),
+      supabase.from("profiles").select("id,name,share_percentage"),
     ]);
 
     if (expenseResult.error) {
@@ -137,6 +152,7 @@ export default function ExpensesPage() {
         expense_date: row.expense_date,
         created_at: row.created_at,
         created_by: row.created_by,
+        paid_from: row.paid_from || "Unassigned",
       }))
     );
 
@@ -149,10 +165,7 @@ export default function ExpensesPage() {
   }, []);
 
   function getProfileName(userId: string) {
-    return (
-      profiles.find((profile) => profile.id === userId)?.name ||
-      "Unknown"
-    );
+    return profiles.find((profile) => profile.id === userId)?.name || "Unknown";
   }
 
   function openAddModal() {
@@ -164,32 +177,27 @@ export default function ExpensesPage() {
 
   function openEditModal(row: ExpenseEntry) {
     const date = new Date(row.expense_date);
-
     const localDate = `${date.getFullYear()}-${String(
       date.getMonth() + 1
     ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-    const localTime = `${String(date.getHours()).padStart(
-      2,
-      "0"
-    )}:${String(date.getMinutes()).padStart(2, "0")}`;
+    const localTime = `${String(date.getHours()).padStart(2, "0")}:${String(
+      date.getMinutes()
+    ).padStart(2, "0")}`;
 
     setEditingId(row.id);
-
     setForm({
       description: row.description,
       amount: String(row.amount),
       date: localDate,
       time: localTime,
+      paid_from: row.paid_from || "Unassigned",
     });
-
     setError("");
     setModalOpen(true);
   }
 
   function closeModal() {
     if (saving) return;
-
     setModalOpen(false);
     setEditingId(null);
     setError("");
@@ -210,23 +218,30 @@ export default function ExpensesPage() {
       setError("Please enter what the expense was for.");
       return;
     }
-
     if (!form.amount || !Number.isFinite(amount) || amount <= 0) {
       setError("Please enter a valid amount.");
       return;
     }
-
     if (!form.date || !form.time) {
       setError("Please select date and time.");
+      return;
+    }
+    if (!form.paid_from) {
+      setError("Please select the bank or cash account.");
       return;
     }
 
     setSaving(true);
     setError("");
 
-    const expenseDate = new Date(
-      `${form.date}T${form.time}:00`
-    ).toISOString();
+    let expenseDate: string;
+    try {
+      expenseDate = new Date(`${form.date}T${form.time}:00`).toISOString();
+    } catch {
+      setError("Please enter a valid date and time.");
+      setSaving(false);
+      return;
+    }
 
     if (editingId) {
       const { error: updateError } = await supabase
@@ -235,6 +250,7 @@ export default function ExpensesPage() {
           description,
           amount,
           expense_date: expenseDate,
+          paid_from: form.paid_from,
         })
         .eq("id", editingId);
 
@@ -261,6 +277,7 @@ export default function ExpensesPage() {
           amount,
           expense_date: expenseDate,
           created_by: user.id,
+          paid_from: form.paid_from,
         });
 
       if (insertError) {
@@ -274,13 +291,11 @@ export default function ExpensesPage() {
     setModalOpen(false);
     setEditingId(null);
     setForm(getCurrentDateTime());
-
     await loadExpenses();
   }
 
   async function deleteExpense(id: string) {
     const row = rows.find((item) => item.id === id);
-
     if (!row) return;
 
     const confirmed = window.confirm(
@@ -288,18 +303,15 @@ export default function ExpensesPage() {
         row.amount
       )}?\n\nThis action cannot be undone.`
     );
-
     if (!confirmed) return;
 
     const supabase = createClient();
-
     if (!supabase) {
       setError("Supabase is not configured.");
       return;
     }
 
     setError("");
-
     const { error: deleteError } = await supabase
       .from("expense_entries")
       .delete()
@@ -313,44 +325,139 @@ export default function ExpensesPage() {
     await loadExpenses();
   }
 
-  const total = rows.reduce(
-    (sum, row) => sum + Number(row.amount),
-    0
-  );
+  const total = rows.reduce((sum, row) => sum + Number(row.amount), 0);
 
   const ownership = [
-    {
-      label: "Badal Maan",
-      percentage: 25,
-    },
-    {
-      label: "Jasnoor",
-      percentage: 25,
-    },
-    {
-      label: "Ranjot Singh",
-      percentage: 50,
-    },
+    { label: "Badal Maan", percentage: 25 },
+    { label: "Jasnoor", percentage: 25 },
+    { label: "Ranjot Singh", percentage: 50 },
   ];
+
+  const sections = [
+    { value: "Ranjot Singh", title: "Paid from Ranjot's Bank" },
+    { value: "Badal Maan", title: "Paid from Badal's Bank" },
+    { value: "Jasnoor", title: "Paid from Jasnoor's Bank" },
+    { value: "Cash", title: "Paid from Cash" },
+    { value: "Unassigned", title: "Unassigned — older expenses" },
+  ];
+
+  function renderExpenseTable(sectionRows: ExpenseEntry[]) {
+    if (sectionRows.length === 0) {
+      return (
+        <div style={{ padding: "18px 16px", color: "#94a3b8", fontSize: 13 }}>
+          No expenses in this section yet.
+        </div>
+      );
+    }
+
+    return (
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Expense for</th>
+              <th>Added by</th>
+              <th>Amount</th>
+              <th style={{ textAlign: "right" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sectionRows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <div style={{ fontWeight: 750 }}>
+                    {formatDate(row.expense_date)}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                      marginTop: 4,
+                      fontSize: 11,
+                      color: "#98a2b3",
+                    }}
+                  >
+                    <Clock3 size={11} />
+                    {formatTime(row.expense_date)}
+                  </div>
+                </td>
+                <td>
+                  <div className="table-strong">{row.description}</div>
+                </td>
+                <td>{getProfileName(row.created_by)}</td>
+                <td className="amount expense">-{money(row.amount)}</td>
+                <td>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 7,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(row)}
+                      title="Edit expense"
+                      aria-label={`Edit ${row.description}`}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        border: "1px solid #e2e8f0",
+                        background: "#fff",
+                        color: "#173f76",
+                        display: "grid",
+                        placeItems: "center",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteExpense(row.id)}
+                      title="Delete expense"
+                      aria-label={`Delete ${row.description}`}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 10,
+                        border: "1px solid #fecdd3",
+                        background: "#fff7f8",
+                        color: "#be123c",
+                        display: "grid",
+                        placeItems: "center",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   return (
     <>
       <SimplePage
         title="Expenses"
-        subtitle="Record what each expense was made for. Responsibility is calculated separately using 25 / 25 / 50."
+        subtitle="Record expenses and track which bank account or cash paid for each one."
       >
         <div className="section-head">
           <div>
-            <div className="section-title">
-              October expenses
-            </div>
-
+            <div className="section-title">October expenses</div>
             <div className="section-description">
-              The person who enters an expense does not change
-              ownership responsibility.
+              Account destination is recorded separately from the person who
+              entered the expense.
             </div>
           </div>
-
           <button
             type="button"
             className="action-btn"
@@ -367,17 +474,14 @@ export default function ExpensesPage() {
           </button>
         </div>
 
-        {/* TOTAL + OWNERSHIP */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns:
-              "minmax(220px, .8fr) minmax(320px, 1.2fr)",
-            gap: 16,
+            gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+            gap: 12,
             marginBottom: 18,
           }}
         >
-          {/* TOTAL */}
           <div
             style={{
               padding: "17px 18px",
@@ -397,7 +501,6 @@ export default function ExpensesPage() {
             >
               Total expenses
             </div>
-
             <div
               style={{
                 marginTop: 5,
@@ -408,93 +511,117 @@ export default function ExpensesPage() {
             >
               {money(total)}
             </div>
-
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                color: "#64748b",
-              }}
-            >
-              {rows.length}{" "}
-              {rows.length === 1 ? "expense" : "expenses"}
+            <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>
+              {rows.length} {rows.length === 1 ? "expense" : "expenses"}
             </div>
           </div>
 
-          {/* OWNERSHIP */}
-          <div
-            style={{
-              padding: "15px 17px",
-              border: "1px solid #e8edf5",
-              borderRadius: 16,
-              background: "#fff",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 800,
-                color: "#98a2b3",
-                textTransform: "uppercase",
-                letterSpacing: ".08em",
-                marginBottom: 10,
-              }}
-            >
-              Expense responsibility
-            </div>
+          {sections.slice(0, 4).map((section) => {
+            const sectionRows = rows.filter(
+              (row) => row.paid_from === section.value
+            );
+            const sectionTotal = sectionRows.reduce(
+              (sum, row) => sum + row.amount,
+              0
+            );
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(3,minmax(0,1fr))",
-                gap: 9,
-              }}
-            >
-              {ownership.map((member) => (
+            return (
+              <div
+                key={section.value}
+                style={{
+                  padding: "17px 18px",
+                  border: "1px solid #e8edf5",
+                  borderRadius: 16,
+                  background: "#fff",
+                }}
+              >
                 <div
-                  key={member.label}
                   style={{
-                    padding: "10px 11px",
-                    borderRadius: 12,
-                    background: "#f7f9fc",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: "#64748b",
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 750,
-                      color: "#64748b",
-                    }}
-                  >
-                    {member.label}
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: 3,
-                      fontSize: 16,
-                      fontWeight: 900,
-                      color: "#12203a",
-                    }}
-                  >
-                    {member.percentage}%
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: 2,
-                      fontSize: 11,
-                      color: "#64748b",
-                    }}
-                  >
-                    {money(
-                      total * (member.percentage / 100)
-                    )}
-                  </div>
+                  {destinationIcon(section.value)}
+                  {section.title}
                 </div>
-              ))}
-            </div>
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 20,
+                    fontWeight: 900,
+                    color: "#12203a",
+                  }}
+                >
+                  {money(sectionTotal)}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 12, color: "#64748b" }}>
+                  {sectionRows.length}{" "}
+                  {sectionRows.length === 1 ? "expense" : "expenses"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div
+          style={{
+            padding: "15px 17px",
+            border: "1px solid #e8edf5",
+            borderRadius: 16,
+            background: "#fff",
+            marginBottom: 20,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              color: "#98a2b3",
+              textTransform: "uppercase",
+              letterSpacing: ".08em",
+              marginBottom: 10,
+            }}
+          >
+            Expense responsibility (ownership split)
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+              gap: 9,
+            }}
+          >
+            {ownership.map((member) => (
+              <div
+                key={member.label}
+                style={{
+                  padding: "10px 11px",
+                  borderRadius: 12,
+                  background: "#f7f9fc",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 750, color: "#64748b" }}>
+                  {member.label}
+                </div>
+                <div
+                  style={{
+                    marginTop: 3,
+                    fontSize: 16,
+                    fontWeight: 900,
+                    color: "#12203a",
+                  }}
+                >
+                  {member.percentage}%
+                </div>
+                <div style={{ marginTop: 2, fontSize: 11, color: "#64748b" }}>
+                  {money(total * (member.percentage / 100))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -515,162 +642,91 @@ export default function ExpensesPage() {
           </div>
         )}
 
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Expense for</th>
-                <th>Added by</th>
-                <th>Amount</th>
-                <th style={{ textAlign: "right" }}>
-                  Actions
-                </th>
-              </tr>
-            </thead>
+        {loading ? (
+          <div
+            style={{
+              padding: 35,
+              textAlign: "center",
+              color: "#64748b",
+              border: "1px solid #e8edf5",
+              borderRadius: 16,
+              background: "#fff",
+            }}
+          >
+            Loading expenses...
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 16 }}>
+            {sections.map((section) => {
+              const sectionRows = rows.filter(
+                (row) => (row.paid_from || "Unassigned") === section.value
+              );
+              const sectionTotal = sectionRows.reduce(
+                (sum, row) => sum + row.amount,
+                0
+              );
 
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan={5}
+              if (section.value === "Unassigned" && sectionRows.length === 0) {
+                return null;
+              }
+
+              return (
+                <section
+                  key={section.value}
+                  style={{
+                    border: "1px solid #e8edf5",
+                    borderRadius: 16,
+                    background: "#fff",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
                     style={{
-                      padding: 35,
-                      textAlign: "center",
-                      color: "#64748b",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                      flexWrap: "wrap",
+                      padding: "15px 17px",
+                      borderBottom: "1px solid #edf1f6",
+                      background: "#fbfcfe",
                     }}
                   >
-                    Loading expenses...
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={5}
-                    style={{
-                      padding: 45,
-                      textAlign: "center",
-                      color: "#64748b",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        color: "#12203a",
-                        marginBottom: 5,
-                      }}
-                    >
-                      No expenses recorded yet
-                    </div>
-
-                    <div style={{ fontSize: 13 }}>
-                      Click “Add expense” to create your
-                      first expense.
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <div style={{ fontWeight: 750 }}>
-                        {formatDate(row.expense_date)}
+                    <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      {destinationIcon(section.value)}
+                      <div style={{ fontWeight: 850, color: "#12203a" }}>
+                        {section.title}
                       </div>
-
-                      <div
+                      <span
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                          marginTop: 4,
                           fontSize: 11,
-                          color: "#98a2b3",
+                          fontWeight: 800,
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          background: "#edf2f7",
+                          color: "#475569",
                         }}
                       >
-                        <Clock3 size={11} />
-                        {formatTime(row.expense_date)}
-                      </div>
-                    </td>
-
-                    <td>
-                      <div className="table-strong">
-                        {row.description}
-                      </div>
-                    </td>
-
-                    <td>
-                      {getProfileName(row.created_by)}
-                    </td>
-
-                    <td className="amount expense">
-                      -{money(Number(row.amount))}
-                    </td>
-
-                    <td>
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "flex-end",
-                          gap: 7,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(row)}
-                          title="Edit expense"
-                          style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 10,
-                            border: "1px solid #e2e8f0",
-                            background: "#fff",
-                            color: "#173f76",
-                            display: "grid",
-                            placeItems: "center",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <Pencil size={14} />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            deleteExpense(row.id)
-                          }
-                          title="Delete expense"
-                          style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 10,
-                            border: "1px solid #fecdd3",
-                            background: "#fff7f8",
-                            color: "#be123c",
-                            display: "grid",
-                            placeItems: "center",
-                            cursor: "pointer",
-                          }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                        {sectionRows.length}
+                      </span>
+                    </div>
+                    <div style={{ fontWeight: 900, color: "#b42318" }}>
+                      {money(sectionTotal)}
+                    </div>
+                  </div>
+                  {renderExpenseTable(sectionRows)}
+                </section>
+              );
+            })}
+          </div>
+        )}
       </SimplePage>
 
-      {/* ADD / EDIT MODAL */}
       {modalOpen && (
         <div
           className="modalBackdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              closeModal();
-            }
+            if (event.target === event.currentTarget) closeModal();
           }}
         >
           <div
@@ -679,8 +735,7 @@ export default function ExpensesPage() {
               background: "#fff",
               borderRadius: 22,
               border: "1px solid #e6ebf3",
-              boxShadow:
-                "0 30px 80px rgba(16,35,65,.18)",
+              boxShadow: "0 30px 80px rgba(16,35,65,.18)",
             }}
           >
             <div
@@ -692,35 +747,20 @@ export default function ExpensesPage() {
               }}
             >
               <div>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 900,
-                    color: "#12203a",
-                  }}
-                >
-                  {editingId
-                    ? "Edit expense"
-                    : "Add expense"}
+                <div style={{ fontSize: 20, fontWeight: 900, color: "#12203a" }}>
+                  {editingId ? "Edit expense" : "Add expense"}
                 </div>
-
-                <div
-                  style={{
-                    marginTop: 5,
-                    fontSize: 12,
-                    color: "#64748b",
-                  }}
-                >
+                <div style={{ marginTop: 5, fontSize: 12, color: "#64748b" }}>
                   {editingId
                     ? "Update the expense details."
                     : "Record a new business expense."}
                 </div>
               </div>
-
               <button
                 type="button"
                 onClick={closeModal}
                 disabled={saving}
+                aria-label="Close modal"
                 style={{
                   width: 34,
                   height: 34,
@@ -729,23 +769,14 @@ export default function ExpensesPage() {
                   background: "#fff",
                   display: "grid",
                   placeItems: "center",
-                  cursor: saving
-                    ? "not-allowed"
-                    : "pointer",
+                  cursor: saving ? "not-allowed" : "pointer",
                 }}
               >
                 <X size={17} />
               </button>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gap: 15,
-                marginTop: 24,
-              }}
-            >
-              {/* DESCRIPTION */}
+            <div style={{ display: "grid", gap: 15, marginTop: 24 }}>
               <label>
                 <span
                   style={{
@@ -758,15 +789,11 @@ export default function ExpensesPage() {
                 >
                   Expense for
                 </span>
-
                 <input
                   type="text"
                   value={form.description}
                   onChange={(event) =>
-                    setForm({
-                      ...form,
-                      description: event.target.value,
-                    })
+                    setForm({ ...form, description: event.target.value })
                   }
                   placeholder="e.g. Office supplies"
                   style={{
@@ -779,7 +806,49 @@ export default function ExpensesPage() {
                 />
               </label>
 
-              {/* AMOUNT */}
+              <label>
+                <span
+                  style={{
+                    display: "block",
+                    marginBottom: 7,
+                    fontSize: 12,
+                    fontWeight: 800,
+                    color: "#344054",
+                  }}
+                >
+                  Paid from
+                </span>
+                <select
+                  value={form.paid_from}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      paid_from: event.target.value as FormState["paid_from"],
+                    })
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "12px 13px",
+                    border: "1px solid #dfe5ee",
+                    borderRadius: 12,
+                    outline: "none",
+                    background: "#fff",
+                    color: "#12203a",
+                  }}
+                >
+                  {PAYMENT_DESTINATIONS.map((destination) => (
+                    <option key={destination.value} value={destination.value}>
+                      {destination.label}
+                    </option>
+                  ))}
+                  {form.paid_from === "Unassigned" && (
+                    <option value="Unassigned" disabled>
+                      Unassigned — older expense
+                    </option>
+                  )}
+                </select>
+              </label>
+
               <label>
                 <span
                   style={{
@@ -792,17 +861,13 @@ export default function ExpensesPage() {
                 >
                   Amount
                 </span>
-
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   value={form.amount}
                   onChange={(event) =>
-                    setForm({
-                      ...form,
-                      amount: event.target.value,
-                    })
+                    setForm({ ...form, amount: event.target.value })
                   }
                   placeholder="10000"
                   style={{
@@ -815,12 +880,10 @@ export default function ExpensesPage() {
                 />
               </label>
 
-              {/* DATE + TIME */}
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns:
-                    "repeat(2,minmax(0,1fr))",
+                  gridTemplateColumns: "repeat(2,minmax(0,1fr))",
                   gap: 12,
                 }}
               >
@@ -839,15 +902,11 @@ export default function ExpensesPage() {
                     <CalendarDays size={13} />
                     Date
                   </span>
-
                   <input
                     type="date"
                     value={form.date}
                     onChange={(event) =>
-                      setForm({
-                        ...form,
-                        date: event.target.value,
-                      })
+                      setForm({ ...form, date: event.target.value })
                     }
                     style={{
                       width: "100%",
@@ -858,7 +917,6 @@ export default function ExpensesPage() {
                     }}
                   />
                 </label>
-
                 <label>
                   <span
                     style={{
@@ -874,15 +932,11 @@ export default function ExpensesPage() {
                     <Clock3 size={13} />
                     Time
                   </span>
-
                   <input
                     type="time"
                     value={form.time}
                     onChange={(event) =>
-                      setForm({
-                        ...form,
-                        time: event.target.value,
-                      })
+                      setForm({ ...form, time: event.target.value })
                     }
                     style={{
                       width: "100%",
@@ -927,7 +981,6 @@ export default function ExpensesPage() {
               >
                 Cancel
               </button>
-
               <button
                 type="button"
                 onClick={saveExpense}
